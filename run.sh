@@ -12,13 +12,25 @@ fi
 echo "[INFO] Go found:"
 go version
 
+export CGO_ENABLED=0
+echo "[INFO] CGO_ENABLED=$CGO_ENABLED (pure Go build, no gcc required)"
+
+if [ -f coupon.db ]; then
+    echo "[WARN] Old coupon.db found, deleting to avoid compatibility issues..."
+    rm -f coupon.db coupon.db-wal coupon.db-shm
+    echo "[INFO] Old database deleted."
+fi
+
 echo ""
 echo "[INFO] Downloading dependencies..."
 go mod tidy || { echo "[ERROR] Failed to download dependencies"; exit 1; }
 
 echo ""
-echo "[INFO] Building..."
-go build -o coupon-service . || { echo "[ERROR] Build failed"; exit 1; }
+echo "[INFO] Building pure Go binary (no cgo)..."
+go build -tags=sqlite_omit_load_extension -ldflags="-s -w" -o coupon-service . || { echo "[ERROR] Build failed"; exit 1; }
+
+echo ""
+echo "[INFO] Build successful! Binary size: $(ls -lh coupon-service | awk '{print $5}')"
 
 echo ""
 echo "[INFO] Starting coupon service..."

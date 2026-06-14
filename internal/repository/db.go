@@ -4,9 +4,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 
 	"coupon-service/internal/constants"
 	"coupon-service/internal/model"
@@ -17,20 +19,59 @@ type Repository struct {
 	db *sql.DB
 }
 
+func ensureDir(dbPath string) error {
+	dir := filepath.Dir(dbPath)
+	if dir == "" || dir == "." {
+		return nil
+	}
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("create db dir failed: %w", err)
+		}
+	}
+	return nil
+}
+
 func New(dbPath string) (*Repository, error) {
-	db, err := sql.Open("sqlite3", dbPath+"?_journal=WAL&_timeout=5000&_fk=1&_busy_timeout=5000")
+	if err := ensureDir(dbPath); err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open db failed: %w", err)
 	}
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;"); err != nil {
-		return nil, fmt.Errorf("set pragma failed: %w", err)
-	}
+
 	if err := db.Ping(); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("ping db failed: %w", err)
 	}
+
+	var journalMode string
+	if err := db.QueryRow("PRAGMA journal_mode=WAL").Scan(&journalMode); err != nil {
+		logger.Info("PRAGMA journal_mode=WAL failed (%v), fall back to default", err)
+	} else {
+		logger.Info("journal_mode = %s", journalMode)
+	}
+
+	if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+		logger.Info("PRAGMA synchronous=NORMAL skipped: %v", err)
+	}
+
+	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		return nil, fmt.Errorf("set busy_timeout failed: %w", err)
+	}
+
+	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+		logger.Info("PRAGMA foreign_keys=ON skipped: %v", err)
+	}
+
+	var tempStore string
+	_ = db.QueryRow("PRAGMA temp_store=MEMORY").Scan(&tempStore)
+
 	repo := &Repository{db: db}
 	if err := repo.initTables(); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("init tables failed: %w", err)
 	}
 	return repo, nil
@@ -189,19 +230,17 @@ func (r *Repository) CountUserRecords(userID, templateID int64) (int64, error) {
 }
 
 func (r *Repository) GetLastClaimTime(userID, templateID int64) (*time.Time, error) {
-	var t time.Time
+	var nullTime sql.NullTime
 	err := r.db.QueryRow(`
 		SELECT MAX(created_at) FROM coupon_record
-		WHERE user_id = ? AND template_id = ?`, userID, templateID).Scan(&t)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
+		WHERE user_id = ? AND template_id = ?`, userID, templateID).Scan(&nullTime)
 	if err != nil {
 		return nil, err
 	}
-	if t.IsZero() {
+	if !nullTime.Valid {
 		return nil, nil
 	}
+	t := nullTime.Time
 	return &t, nil
 }
 
@@ -331,6 +370,12 @@ func (r *Repository) GetOrCreateUser(userID int64, level constants.UserLevel) (*
 
 func (r *Repository) MarkNewUserGiftSent(userID int64) error {
 	_, err := r.db.Exec(`UPDATE user SET new_user_gift_sent = 1, updated_at = ? WHERE id = ?`,
+		logger.Now(), userID)
+	return err
+}
+
+func (r *Repository) MarkNewUserGiftSentTx(tx *sql.Tx, userID int64) error {
+	_, err := tx.Exec(`UPDATE user SET new_user_gift_sent = 1, updated_at = ? WHERE id = ?`,
 		logger.Now(), userID)
 	return err
 }

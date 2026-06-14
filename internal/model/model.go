@@ -47,16 +47,16 @@ type User struct {
 }
 
 type CreateTemplateRequest struct {
-	Name           string                     `json:"name" binding:"required"`
-	Type           constants.CouponType       `json:"type" binding:"required"`
-	Value          float64                    `json:"value" binding:"required,min=0"`
-	Threshold      float64                    `json:"threshold" binding:"required,min=0"`
-	TotalCount     int64                      `json:"total_count" binding:"required,min=1"`
-	PerUserLimit   int64                      `json:"per_user_limit" binding:"required,min=1"`
-	ValidFrom      time.Time                  `json:"valid_from" binding:"required"`
-	ValidTo        time.Time                  `json:"valid_to" binding:"required,gtfield=ValidFrom"`
-	ApplicableLevel constants.UserLevel       `json:"applicable_level" binding:"required"`
-	Category       constants.CouponCategory   `json:"category" binding:"required"`
+	Name            string                    `json:"name" binding:"required"`
+	Type            constants.CouponType      `json:"type"`
+	Value           float64                   `json:"value" binding:"required,min=0"`
+	Threshold       float64                   `json:"threshold" binding:"gte=0"`
+	TotalCount      int64                     `json:"total_count" binding:"required,min=1"`
+	PerUserLimit    int64                     `json:"per_user_limit" binding:"required,min=1"`
+	ValidFrom       time.Time                 `json:"valid_from" binding:"required"`
+	ValidTo         time.Time                 `json:"valid_to" binding:"required,gtfield=ValidFrom"`
+	ApplicableLevel constants.UserLevel       `json:"applicable_level"`
+	Category        constants.CouponCategory  `json:"category"`
 }
 
 type ClaimRequest struct {
@@ -73,5 +73,5 @@ type UseRequest struct {
 
 type NewUserRegisterRequest struct {
 	UserID int64                `json:"user_id" binding:"required,min=1"`
-	Level  constants.UserLevel  `json:"level" binding:"required"`
+	Level  constants.UserLevel  `json:"level"`
 }

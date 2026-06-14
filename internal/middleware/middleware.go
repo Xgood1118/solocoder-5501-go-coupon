@@ -1,6 +1,9 @@
 package middleware
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -40,22 +43,36 @@ func LoggingMiddleware() gin.HandlerFunc {
 
 func EnumValidationMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if c.Request.Method != http.MethodPost {
+			c.Next()
+			return
+		}
+		path := c.Request.URL.Path
 		var req interface{}
-		switch c.Request.URL.Path {
+		switch path {
 		case "/api/v1/templates", "/api/v1/templates/":
-			if c.Request.Method == http.MethodPost {
-				req = &model.CreateTemplateRequest{}
-			}
+			req = &model.CreateTemplateRequest{}
 		case "/api/v1/users/register", "/api/v1/users/register/":
 			req = &model.NewUserRegisterRequest{}
+		case "/api/v1/coupons/claim", "/api/v1/coupons/claim/":
+			req = &model.ClaimRequest{}
+		case "/api/v1/coupons/use", "/api/v1/coupons/use/":
+			req = &model.UseRequest{}
+		default:
+			c.Next()
+			return
 		}
-		if req != nil {
-			if err := c.ShouldBindJSON(req); err == nil {
-				if code := validateEnum(req); code != nil {
-					response.Error(c, http.StatusUnprocessableEntity, *code)
-					c.Abort()
-					return
-				}
+		body, err := c.GetRawData()
+		if err != nil {
+			c.Next()
+			return
+		}
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
+		if err := json.Unmarshal(body, req); err == nil {
+			if code := validateEnum(req); code != nil {
+				response.Error(c, http.StatusUnprocessableEntity, *code)
+				c.Abort()
+				return
 			}
 		}
 		c.Next()

@@ -50,7 +50,6 @@ func main() {
 	r.Use(middleware.CORSMiddleware())
 	r.Use(middleware.LoggingMiddleware())
 	r.Use(middleware.RecoveryMiddleware())
-	r.Use(middleware.EnumValidationMiddleware())
 
 	h.RegisterRoutes(r)
 

@@ -69,7 +69,7 @@ func (s *NewUserService) Register(userID int64, level constants.UserLevel) (*mod
 		return nil, err
 	}
 
-	if err := s.repo.MarkNewUserGiftSent(userID); err != nil {
+	if err := s.repo.MarkNewUserGiftSentTx(tx, userID); err != nil {
 		_ = tx.Rollback()
 		logger.Error("mark new user gift sent failed: %v", err)
 		return nil, err
